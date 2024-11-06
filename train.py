@@ -12,12 +12,16 @@ def train(model, device, train_loader, optimizer, epoch):
         loss = nn.CrossEntropyLoss()(output, target)
         loss.backward()
         
-        # GSGD Step
+        # Collect consistent batches based on batch loss
+        optimizer.collect_consistent_batches(loss.item())
+
+        # Perform the GSGD step
         optimizer.step()
 
         if batch_idx % 10 == 0:
             print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(train_loader.dataset)}] '
                   f'Loss: {loss.item():.6f}')
+
 
 
 def test(model, device, test_loader):
@@ -35,4 +39,3 @@ def test(model, device, test_loader):
     test_loss /= len(test_loader.dataset)
     print(f'\nTest set: Average loss: {test_loss:.4f}, Accuracy: {correct}/{len(test_loader.dataset)} '
           f'({100. * correct / len(test_loader.dataset):.0f}%)\n')
-
