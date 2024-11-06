@@ -1,6 +1,7 @@
 # Contents of train.py
 import torch
 import torch.nn.functional as F
+import torch.nn as nn
 
 def train(model, device, train_loader, optimizer, epoch):
     model.train()
