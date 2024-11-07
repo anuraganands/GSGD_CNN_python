@@ -6,7 +6,10 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 import random
 
-def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn, verification_set_num=4):
+from torch.utils.data import DataLoader, Subset
+import random
+
+def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn, verification_set_num=4, rho=10):
     model.train()
 
     # Step 1: Create a Dummy Verification Set from the Training Data
@@ -35,25 +38,31 @@ def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn,
 
     avg_dummy_verification_error = total_error / count if count > 0 else 0  # Dummy verification error
 
-    # Step 3: Training with Consistent Batch Selection Based on Dummy Verification Error
-    for batch_idx, (data, target) in enumerate(training_loader):
-        data, target = data.to(device), target.to(device)
-        optimizer.zero_grad()
-        output = model(data)
-        loss = loss_fn(output, target)
-        loss.backward()
+    # Step 3: Recursive Training for ρ Iterations
+    for iteration in range(rho):
+        print(f"\nRecursive Iteration {iteration + 1}/{rho}")
+        for batch_idx, (data, target) in enumerate(training_loader):
+            data, target = data.to(device), target.to(device)
+            optimizer.zero_grad()
+            output = model(data)
+            loss = loss_fn(output, target)
+            loss.backward()
 
-        # Collect consistent batches based on dummy verification error
-        optimizer.collect_consistent_batches(loss.item(), data, target, avg_dummy_verification_error)
+            # Collect consistent batches based on dummy verification error
+            optimizer.collect_consistent_batches(loss.item(), data, target, avg_dummy_verification_error)
 
-        # Update weights with consistent batches
-        optimizer.step(model, loss_fn)
+            # Standard weight update with all data
+            optimizer.step(model, loss_fn)
 
-        if batch_idx % 10 == 0:
-            print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(training_loader.dataset)}] '
-                  f'Loss: {loss.item():.6f}')
+            if batch_idx % 10 == 0:
+                print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(training_loader.dataset)}] '
+                      f'Loss: {loss.item():.6f}')
 
-    # Step 4: Full Validation Evaluation (for guiding training)
+    # Step 4: Refine Weights with Consistent Data After ρ Iterations
+    print("\nRefining weights with consistent data after ρ iterations.")
+    optimizer.refine_with_consistent_data(model, loss_fn)
+
+    # Step 5: Full Validation Evaluation (for guiding training)
     model.eval()
     validation_loss = 0
     correct = 0

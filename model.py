@@ -27,21 +27,24 @@ class CNN_GSGD(nn.Module):
         return x
 
 # GSGD Optimizer with Consistency Check
-
 class GSGDOptimizer(optim.Optimizer):
-    def __init__(self, params, lr=0.01, rho=10, revisit_batch_num=2):
-        defaults = dict(lr=lr, rho=rho)
+    def __init__(self, params, lr=0.01, revisit_batch_num=5):
+        defaults = dict(lr=lr)
         super(GSGDOptimizer, self).__init__(params, defaults)
         self.consistent_batches = []  # Store consistent data instances
-        self.rho = rho
 
     def collect_consistent_batches(self, batch_loss, data, target, avg_dummy_verification_error):
-        # Check consistency based on dummy verification error
-        if len(self.consistent_batches) == 0 or batch_loss <= avg_dummy_verification_error + self.rho:
+        # Check if the batch_loss is within acceptable bounds to be considered consistent
+        if batch_loss <= avg_dummy_verification_error:
             self.consistent_batches.append((data, target))
 
     def step(self, model, loss_fn):
-        # Only proceed with updating weights if consistent batches exist
+        for group in self.param_groups:
+            for p in group['params']:
+                if p.grad is not None:
+                    p.data.add_(p.grad, alpha=-group['lr'])
+
+    def refine_with_consistent_data(self, model, loss_fn):
         if self.consistent_batches:
             model.train()  # Ensure model is in training mode
             for data, target in self.consistent_batches:
