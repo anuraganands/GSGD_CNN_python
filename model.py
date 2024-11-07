@@ -27,46 +27,75 @@ class CNN_GSGD(nn.Module):
         return x
 
 # GSGD Optimizer with Consistency Check
+
 class GSGDOptimizer(optim.Optimizer):
-    def __init__(self, params, lr=0.01, rho=10, consistency_threshold=0.1):
+    def __init__(self, params, lr=0.01, rho=10, revisit_batch_num=2):
         defaults = dict(lr=lr, rho=rho)
         super(GSGDOptimizer, self).__init__(params, defaults)
-        self.consistent_batches = []  # Store consistent batches here
-        self.consistency_threshold = consistency_threshold  # Define your threshold
+        self.consistent_batches = []  # Store consistent data instances
+        self.rho = rho
 
-    def collect_consistent_batches(self, batch_loss):
-        # Check if the batch loss falls within the acceptable range (consistency threshold)
-        if len(self.consistent_batches) > 0:
-            prev_loss = self.consistent_batches[-1]  # Last consistent batch loss
-            if abs(batch_loss - prev_loss) <= self.consistency_threshold:
-                self.consistent_batches.append(batch_loss)
-            else:
-                # If the batch is inconsistent, reset or ignore it based on your strategy
-                self.consistent_batches = [batch_loss] if len(self.consistent_batches) >= self.defaults['rho'] else []
-        else:
-            # Initialize with the first batch loss
-            self.consistent_batches.append(batch_loss)
+    def collect_consistent_batches(self, batch_loss, data, target, avg_dummy_verification_error):
+        # Check consistency based on dummy verification error
+        if len(self.consistent_batches) == 0 or batch_loss <= avg_dummy_verification_error + self.rho:
+            self.consistent_batches.append((data, target))
 
-    def step(self, closure=None):
-        loss = None
-        if closure is not None:
-            loss = closure()
-
-        for group in self.param_groups:
-            for p in group['params']:
-                if p.grad is None:
-                    continue
-                d_p = p.grad.data
-
-                # Here we would adjust weights based on consistent batches collected
-                if len(self.consistent_batches) >= self.defaults['rho']:
-                    # Perform weight update using the consistent batches
-                    p.data.add_(d_p, alpha=-group['lr'])
-                    self.consistent_batches.clear()  # Reset after weight update with consistent batches
-                else:
-                    # Regular weight update without consistency filtering
-                    ##p.data.add_(-group['lr'], d_p)
-                    p.data.add_(d_p, alpha=-group['lr'])
+    def step(self, model, loss_fn):
+        # Only proceed with updating weights if consistent batches exist
+        if self.consistent_batches:
+            model.train()  # Ensure model is in training mode
+            for data, target in self.consistent_batches:
+                model.zero_grad()
+                output = model(data)
+                loss = loss_fn(output, target)
+                loss.backward()
+                
+                # Apply gradients to parameters
+                for group in self.param_groups:
+                    for p in group['params']:
+                        if p.grad is not None:
+                            p.data.add_(p.grad, alpha=-group['lr'])
+            # Clear consistent batches after weight update
+            self.consistent_batches.clear()
 
 
-        return loss
+
+# class GSGDOptimizer(optim.Optimizer):
+#     def __init__(self, params, lr=0.01, rho=10, revisit_batch_num=4):
+#         defaults = dict(lr=lr, rho=rho)
+#         super(GSGDOptimizer, self).__init__(params, defaults)
+#         self.consistent_batches = []  # Store consistent data instances
+#         self.rho = rho
+
+#     def collect_consistent_batches(self, model, batch_loss, data, target, verification_loader):
+#         # Calculate average error on verification data
+#         model.eval()  # Set model to evaluation mode
+#         with torch.no_grad():
+#             total_error = 0
+#             count = 0
+#             for v_data, v_target in verification_loader:
+#                 v_data, v_target = v_data.to(data.device), v_target.to(data.device)
+#                 v_output = model(v_data)
+#                 v_loss = nn.CrossEntropyLoss()(v_output, v_target)
+#                 total_error += v_loss.item()
+#                 count += 1
+#             avg_verification_error = total_error / count
+
+#         # Check consistency with neighborhood threshold (rho)
+#         if len(self.consistent_batches) == 0 or batch_loss <= avg_verification_error + self.rho:
+#             self.consistent_batches.append((data, target))
+
+#     def step(self, model, loss_fn):
+#         if self.consistent_batches:
+#             model.train()  # Ensure model is in training mode
+#             for data, target in self.consistent_batches:
+#                 model.zero_grad()
+#                 output = model(data)
+#                 loss = loss_fn(output, target)
+#                 loss.backward()
+#                 for group in self.param_groups:
+#                     for p in group['params']:
+#                         if p.grad is not None:
+#                             p.data.add_(p.grad, alpha=-group['lr'])
+#             # Clear consistent batches after weight update
+#             self.consistent_batches.clear()
