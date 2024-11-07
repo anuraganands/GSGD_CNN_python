@@ -1,4 +1,5 @@
 # Guided Stochastic Gradient Descent (GSGD) for Convolutional Neural Networks (CNN)
+# *NOT YET VERIFIED*
 
 This project implements a Convolutional Neural Network (CNN) with a Guided Stochastic Gradient Descent (GSGD) optimizer in Python. This Python version is adapted from an original MATLAB implementation, focusing on improving classification accuracy and convergence in CNNs by strategically guiding SGD to prioritize consistent training batches.
 
