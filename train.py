@@ -71,40 +71,6 @@ def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn,
           f'({100. * correct / len(DataLoader(validation_data).dataset):.0f}%)\n')
 
 
-# def train(model, device, train_data, optimizer, epoch, loss_fn, verification_ratio=0.1):
-#     model.train()
-    
-#     # Randomly select a subset of data for verification at the start of each epoch
-#     total_indices = list(range(len(train_data)))
-#     verification_size = int(len(train_data) * verification_ratio)
-#     verification_indices = random.sample(total_indices, verification_size)
-#     training_indices = list(set(total_indices) - set(verification_indices))
-
-#     verification_set = Subset(train_data, verification_indices)
-#     training_set = Subset(train_data, training_indices)
-
-#     verification_loader = DataLoader(verification_set, batch_size=64, shuffle=True,num_workers=4)
-#     training_loader = DataLoader(training_set, batch_size=64, shuffle=True,num_workers=4)
-
-#     for batch_idx, (data, target) in enumerate(training_loader):
-#         data, target = data.to(device), target.to(device)
-#         optimizer.zero_grad()
-#         output = model(data)
-#         loss = loss_fn(output, target)
-#         loss.backward()
-
-#         # Collect consistent batches based on verification data, passing `model` to the function
-#         optimizer.collect_consistent_batches(model, loss.item(), data, target, verification_loader)
-
-#         # Update weights with consistent batches
-#         optimizer.step(model, loss_fn)
-
-#         if batch_idx % 10 == 0:
-#             print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(training_loader.dataset)}] '
-#                   f'Loss: {loss.item():.6f}')
-
-
-
 def test(model, device, test_loader):
     model.eval()
     test_loss = 0
