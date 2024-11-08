@@ -27,12 +27,12 @@ python main.ipynb
 
 ## Parameters and Hyperparameters
 - Major ones:
- - *lr*: Learning rate for the optimizer, set in main.ipynb.
- - *rho*: Neighborhood size in GSGDOptimizer for identifying consistent batches.
- - *batch_size*: Batch size for training and testing.
+  - *lr*: Learning rate for the optimizer, set in main.ipynb.
+  - *rho*: Neighborhood size in GSGDOptimizer for identifying consistent batches.
+  - *batch_size*: Batch size for training and testing.
 - Minor ones:
- - revisit_batch_num: how many consistent batches to revisit for weight update
- - verification_set_num: a small dummy validation set to indicate if a batch is consistent or not. Used for efficiency purpose.
+  - revisit_batch_num: how many consistent batches to revisit for weight update
+  - verification_set_num: a small dummy validation set to indicate if a batch is consistent or not. Used for efficiency purpose.
 - Feel free to adjust these hyperparameters in main.ipynb for experimentation.
 
 ## Results and Evaluation
