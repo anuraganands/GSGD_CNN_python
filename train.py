@@ -6,10 +6,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, Subset
 import random
 
-from torch.utils.data import DataLoader, Subset
-import random
-
-def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn, verification_set_num=4, rho=10):
+def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn, verification_set_num=4, rho=10, log_interval=10):
     model.train()
 
     # Step 1: Create a Dummy Verification Set from the Training Data
@@ -23,61 +20,116 @@ def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn,
     dummy_verification_loader = DataLoader(dummy_verification_set, batch_size=64, shuffle=True)
     training_loader = DataLoader(training_set, batch_size=64, shuffle=True)
 
-    # Step 2: Calculate the Dummy Verification Error for Consistency Checking
-    total_error = 0
-    count = 0
-    for i, (v_data, v_target) in enumerate(dummy_verification_loader):
-        if i >= verification_set_num:
-            break  # Limit the number of batches for dummy verification
-        v_data, v_target = v_data.to(device), v_target.to(device)
-        with torch.no_grad():
-            v_output = model(v_data)
-            v_loss = loss_fn(v_output, v_target)
-            total_error += v_loss.item()
-            count += 1
+    # Step 2: Iterate through the batches of data within an epoch
+    for batch_idx, (data, target) in enumerate(training_loader):
+        data, target = data.to(device), target.to(device)
+        optimizer.zero_grad()
+        output = model(data)
+        loss = loss_fn(output, target)
+        loss.backward()
 
-    avg_dummy_verification_error = total_error / count if count > 0 else 0  # Dummy verification error
+        # Perform weight update for the current data instance
+        optimizer.step(model, loss_fn)
 
-    # Step 3: Recursive Training for ρ Iterations
-    for iteration in range(rho):
-        print(f"\nRecursive Iteration {iteration + 1}/{rho}")
-        for batch_idx, (data, target) in enumerate(training_loader):
-            data, target = data.to(device), target.to(device)
-            optimizer.zero_grad()
-            output = model(data)
-            loss = loss_fn(output, target)
-            loss.backward()
+        # Step 3: Calculate approximate average error (Ē_t) using dummy verification data
+        total_error = 0
+        count = 0
+        for i, (v_data, v_target) in enumerate(dummy_verification_loader):
+            if i >= verification_set_num:
+                break  # Limit the number of batches for dummy verification
+            v_data, v_target = v_data.to(device), v_target.to(device)
+            with torch.no_grad():
+                v_output = model(v_data)
+                v_loss = loss_fn(v_output, v_target)
+                total_error += v_loss.item()
+                count += 1
+        avg_dummy_verification_error = total_error / count if count > 0 else 0  # Dummy verification error
 
-            # Collect consistent batches based on dummy verification error
-            optimizer.collect_consistent_batches(loss.item(), data, target, avg_dummy_verification_error)
+        # Step 4: Collect consistent data points (ψ) for iterations 1 through `ρ-1`
+        if (batch_idx + 1) % rho != 0:  # Collect during 1 to `ρ-1` iterations
+            optimizer.collectConsistentBatches(loss.item(), data, target, avg_dummy_verification_error)
 
-            # Standard weight update with all data
-            optimizer.step(model, loss_fn)
+        # Step 5: On the `ρ`-th iteration, refine weights using consistent data and reset consistent batches
+        if (batch_idx + 1) % rho == 0:
+            optimizer.refine_with_consistent_data(model, loss_fn, avg_dummy_verification_error)
+            # print(f"Refinement performed at iteration {batch_idx + 1}")
 
-            if batch_idx % 10 == 0:
-                print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(training_loader.dataset)}] '
-                      f'Loss: {loss.item():.6f}')
+        # Log the training progress every `log_interval` batches
+        if batch_idx % log_interval == 0:
+            print(f'Epoch: {epoch}, Iteration: {batch_idx + 1}, Loss: {loss.item():.6f}')
 
-    # Step 4: Refine Weights with Consistent Data After ρ Iterations
-    print("\nRefining weights with consistent data after ρ iterations.")
-    optimizer.refine_with_consistent_data(model, loss_fn)
+    print(f"Epoch {epoch} completed.")
 
-    # Step 5: Full Validation Evaluation (for guiding training)
-    model.eval()
-    validation_loss = 0
-    correct = 0
-    with torch.no_grad():
-        for data, target in DataLoader(validation_data, batch_size=64, shuffle=False):
-            data, target = data.to(device), target.to(device)
-            output = model(data)
-            validation_loss += loss_fn(output, target).item()  # Sum up batch loss
-            pred = output.argmax(dim=1, keepdim=True)  # Get the index of the max log-probability
-            correct += pred.eq(target.view_as(pred)).sum().item()
 
-    validation_loss /= len(DataLoader(validation_data).dataset)
-    print(f'\nValidation set: Average loss: {validation_loss:.4f}, '
-          f'Accuracy: {correct}/{len(DataLoader(validation_data).dataset)} '
-          f'({100. * correct / len(DataLoader(validation_data).dataset):.0f}%)\n')
+# def train(model, device, train_data, validation_data, optimizer, epoch, loss_fn, verification_set_num=4, rho=10):
+#     model.train()
+
+#     # Step 1: Create a Dummy Verification Set from the Training Data
+#     total_indices = list(range(len(train_data)))
+#     verification_indices = random.sample(total_indices, 64 * verification_set_num)  # Dummy set size based on batches
+#     training_indices = list(set(total_indices) - set(verification_indices))
+
+#     dummy_verification_set = Subset(train_data, verification_indices)
+#     training_set = Subset(train_data, training_indices)
+
+#     dummy_verification_loader = DataLoader(dummy_verification_set, batch_size=64, shuffle=True)
+#     training_loader = DataLoader(training_set, batch_size=64, shuffle=True)
+
+#     # Step 2: Calculate the Dummy Verification Error for Consistency Checking
+#     total_error = 0
+#     count = 0
+#     for i, (v_data, v_target) in enumerate(dummy_verification_loader):
+#         if i >= verification_set_num:
+#             break  # Limit the number of batches for dummy verification
+#         v_data, v_target = v_data.to(device), v_target.to(device)
+#         with torch.no_grad():
+#             v_output = model(v_data)
+#             v_loss = loss_fn(v_output, v_target)
+#             total_error += v_loss.item()
+#             count += 1
+
+#     avg_dummy_verification_error = total_error / count if count > 0 else 0  # Dummy verification error
+
+#     # Step 3: Recursive Training for ρ Iterations
+#     for iteration in range(rho):
+#         print(f"\nRecursive Iteration {iteration + 1}/{rho}")
+#         for batch_idx, (data, target) in enumerate(training_loader):
+#             data, target = data.to(device), target.to(device)
+#             optimizer.zero_grad()
+#             output = model(data)
+#             loss = loss_fn(output, target)
+#             loss.backward()
+
+#             # Collect consistent batches based on dummy verification error
+#             optimizer.collect_consistent_batches(loss.item(), data, target, avg_dummy_verification_error)
+
+#             # Standard weight update with all data
+#             optimizer.step(model, loss_fn)
+
+#             if batch_idx % 10 == 0:
+#                 print(f'Train Epoch: {epoch} [{batch_idx * len(data)}/{len(training_loader.dataset)}] '
+#                       f'Loss: {loss.item():.6f}')
+
+#     # Step 4: Refine Weights with Consistent Data After ρ Iterations
+#     print("\nRefining weights with consistent data after ρ iterations.")
+#     optimizer.refine_with_consistent_data(model, loss_fn)
+
+#     # Step 5: Full Validation Evaluation (for guiding training)
+#     model.eval()
+#     validation_loss = 0
+#     correct = 0
+#     with torch.no_grad():
+#         for data, target in DataLoader(validation_data, batch_size=64, shuffle=False):
+#             data, target = data.to(device), target.to(device)
+#             output = model(data)
+#             validation_loss += loss_fn(output, target).item()  # Sum up batch loss
+#             pred = output.argmax(dim=1, keepdim=True)  # Get the index of the max log-probability
+#             correct += pred.eq(target.view_as(pred)).sum().item()
+
+#     validation_loss /= len(DataLoader(validation_data).dataset)
+#     print(f'\nValidation set: Average loss: {validation_loss:.4f}, '
+#           f'Accuracy: {correct}/{len(DataLoader(validation_data).dataset)} '
+#           f'({100. * correct / len(DataLoader(validation_data).dataset):.0f}%)\n')
 
 
 def test(model, device, test_loader):
