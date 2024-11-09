@@ -1,4 +1,5 @@
 # Guided Stochastic Gradient Descent (GSGD) for Convolutional Neural Networks (CNN)
+# *NOT YET VERIFIED*
 
 This project implements a Convolutional Neural Network (CNN) with a Guided Stochastic Gradient Descent (GSGD) optimizer in Python. This Python version is adapted from an original MATLAB implementation, focusing on improving classification accuracy and convergence in CNNs by strategically guiding SGD to prioritize consistent training batches.
 
@@ -25,9 +26,13 @@ python main.ipynb
 - **main.ipynb**: Loads the dataset, initializes the model and optimizer, and starts the training loop.
 
 ## Parameters and Hyperparameters
-- *lr*: Learning rate for the optimizer, set in main.ipynb.
-- *rho*: Neighborhood size in GSGDOptimizer for identifying consistent batches.
-- *batch_size*: Batch size for training and testing.
+- Major ones:
+  - *lr*: Learning rate for the optimizer, set in main.ipynb.
+  - *rho*: Neighborhood size in GSGDOptimizer for identifying consistent batches.
+  - *batch_size*: Batch size for training and testing.
+- Minor ones:
+  - revisit_batch_num: how many consistent batches to revisit for weight update. Defined in the constructor of GSGDOptimizer.
+  - verification_set_num: a small dummy validation set to indicate if a batch is consistent or not. Used for efficiency purpose. Defined in the *train* function in *train.py*
 - Feel free to adjust these hyperparameters in main.ipynb for experimentation.
 
 ## Results and Evaluation
